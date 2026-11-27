@@ -16,6 +16,8 @@ bun test
 
 The tests import `claude-code/testing`, a module only the claude binary provides. `tsconfig.json` maps it to `test-support/claude-code-testing.ts`, which re-exports `describe`, `expect` and `mock` from `bun:test` and wraps `test` so the host's `{ timeoutMs }` option becomes bun's `{ timeout }`. `core/tests/load/` holds timing probes that need their own harness; bun test does not pick them up. `bunx tsc --noEmit -p .` reports 51 type errors in `core/tests/patterns.test.ts` (a `string[]` where the test helper wants a 3-tuple); they are in the extracted source and are left as they are.
 
+The janitor's host-bound tests (`shield.test.ts`, `json-text.test.ts`) are not part of this repo; they are expected to run under the Claude host; not verified here.
+
 ## Using it
 
 Consumers vendor the files or install the package at a pinned tag (for example `v0.1.0`); never track a branch. `scan/scan.ts` reads its version from `.claude-plugin/plugin.json` of the repo root, which this repo does not have, so the caller sets `SHIELD_SCAN_VERSION`.
