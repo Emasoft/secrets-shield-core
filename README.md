@@ -2,7 +2,7 @@
 
 The secret, payment-card, email and home-path redaction core shared by ai-maestro-janitor and reports-sanitizer-plugin.
 
-- `core/`: the redaction passes (token rules under `core/rules/`, payment cards, email, home paths), the pipeline that runs them in a fixed order, and the known-value matcher. `core/register.ts` is the janitor's mod wiring (hooks and the slash command); it imports types from `claude-code`, which do not resolve in this repo.
+- `core/`: the redaction passes (token rules under `core/rules/`, payment cards, email, home paths), the pipeline that runs them in a fixed order, and the known-value matcher. The engine only: the janitor's Claude Code mod registration stays in ai-maestro-janitor.
 - `scan/`: the file scanner and in-place redactor built on the core (vault, restore, JSONL handling, write guard).
 - `KNOWN-MISSES.md`: the secrets the shield knowingly does not hide, each pinned by `core/tests/known-misses.test.ts`.
 
@@ -14,7 +14,7 @@ It is TypeScript, run by [bun](https://bun.sh). There is no build step.
 bun test
 ```
 
-The core tests import `claude-code/testing`, a module only the claude binary provides. `tsconfig.json` maps it to `test-support/claude-code-testing.ts`, which re-exports `describe`, `expect`, `mock` and `test` from `bun:test`. That covers every pure test. 15 tests (in `core/tests/shield.test.ts` and `core/tests/json-text.test.ts`) use the mod host (`$`, `on`, `mock.store`) and fail under bun; they run only through `claude plugin test`. `core/tests/load/` holds timing probes that need their own harness; bun test does not pick them up.
+The tests import `claude-code/testing`, a module only the claude binary provides. `tsconfig.json` maps it to `test-support/claude-code-testing.ts`, which re-exports `describe`, `expect` and `mock` from `bun:test` and wraps `test` so the host's `{ timeoutMs }` option becomes bun's `{ timeout }`. `core/tests/load/` holds timing probes that need their own harness; bun test does not pick them up. `bunx tsc --noEmit -p .` reports 51 type errors in `core/tests/patterns.test.ts` (a `string[]` where the test helper wants a 3-tuple); they are in the extracted source and are left as they are.
 
 ## Using it
 

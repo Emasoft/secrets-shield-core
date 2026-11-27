@@ -22,6 +22,8 @@ A future upstream sync is a manual merge. The sed file at `reports_dev/secret-sh
 
 Extracted from Emasoft/ai-maestro-janitor at commit 4153503e (v3.9.9). The janitor's hooks/secret-shield became core/ and its scripts/shield_scan became scan/; the only edits are the import paths and the core folder path in scan/scan.ts that the new layout requires.
 
+Not included: the janitor's mod registration (register.ts) and its host-bound tests stay in ai-maestro-janitor. The tests are core/tests/shield.test.ts and core/tests/json-text.test.ts, whose tests need the mod host.
+
 ## Rules taken from other projects
 
 - `slackAppToken`, `slackConfigAccessToken` and `slackConfigRefreshToken` in `rules/messaging-payments.ts` are taken word for word from the gitleaks rules slack-app-token, slack-config-access-token and slack-config-refresh-token (https://github.com/gitleaks/gitleaks, release v8.30.1, MIT licence, Copyright (c) 2019 Zachary Rice). The only change is that the leading `(?i)` is written as the scoped group `(?i:...)`.
