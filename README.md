@@ -2,7 +2,7 @@
 
 The secret, payment-card, email and home-path redaction core shared by ai-maestro-janitor and reports-sanitizer-plugin.
 
-- `core/`: the redaction passes (token rules under `core/rules/`, payment cards, email, home paths), the pipeline that runs them in a fixed order, and the known-value matcher. Linear-time rules. `core/register.ts` is the janitor's mod wiring (hooks and the slash command); it imports types from `claude-code`, which do not resolve in this repo.
+- `core/`: the redaction passes (token rules under `core/rules/`, payment cards, email, home paths), the pipeline that runs them in a fixed order, and the known-value matcher. `core/register.ts` is the janitor's mod wiring (hooks and the slash command); it imports types from `claude-code`, which do not resolve in this repo.
 - `scan/`: the file scanner and in-place redactor built on the core (vault, restore, JSONL handling, write guard).
 - `KNOWN-MISSES.md`: the secrets the shield knowingly does not hide, each pinned by `core/tests/known-misses.test.ts`.
 
