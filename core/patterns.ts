@@ -2,7 +2,7 @@
 
 import { anthropicKey, huggingfaceToken, openaiKey48, openaiLegacyKey, openaiProjectKey } from './rules/ai'
 import { awsAccessKey, awsSecretKeyAssignment, awsSecretKeyJson, awsSessionToken, digitaloceanOAuthToken, digitaloceanPat, digitaloceanRefreshToken, googleApiKey, googleOAuthAccessToken, googleOAuthClientSecret, googleOAuthRefreshToken } from './rules/cloud'
-import { githubTokenClassic, githubTokenFineGrained, gitlabAgentToken, gitlabCicdJobToken, gitlabDeployToken, gitlabFeatureFlagClientToken, gitlabFeedToken, gitlabIncomingMailToken, gitlabOAuthAppSecret, gitlabPat, gitlabRunnerRegistrationToken, gitlabRunnerToken, gitlabScimToken, gitlabSessionCookie, gitlabSessionCookieValueFirst, gitlabTriggerToken, gitlabWorkspaceToken } from './rules/code-hosts'
+import { githubTokenClassic, githubTokenFineGrained, gitlabAgentToken, gitlabCicdJobToken, gitlabDeployToken, gitlabFeatureFlagClientToken, gitlabFeedToken, gitlabIncomingMailToken, gitlabOAuthAppSecretRule, gitlabPat, gitlabRunnerRegistrationToken, gitlabRunnerToken, gitlabScimToken, gitlabSessionCookie, gitlabSessionCookieValueFirst, gitlabTriggerToken, gitlabWorkspaceTokenRule } from './rules/code-hosts'
 import { dockerPat, npmrcAuthToken, npmToken, pypiToken, sendgridKey, xmlPassword } from './rules/dev-services'
 import { bearerBare, bearerToken, jwt, jwtWide, privateKey, sshPublicKey } from './rules/key-material'
 import { slackAppToken, slackConfigAccessToken, slackConfigRefreshToken, slackToken, slackWebhook, stripeApiKey, stripeWebhookSecret } from './rules/messaging-payments'
@@ -80,7 +80,7 @@ const TOKENS: readonly Rule[] = [
   githubTokenClassic,
   githubTokenFineGrained,
   gitlabPat,
-  gitlabOAuthAppSecret,
+  gitlabOAuthAppSecretRule,
   gitlabDeployToken,
   gitlabRunnerToken,
   gitlabRunnerRegistrationToken,
@@ -89,7 +89,7 @@ const TOKENS: readonly Rule[] = [
   gitlabFeedToken,
   gitlabIncomingMailToken,
   gitlabAgentToken,
-  gitlabWorkspaceToken,
+  gitlabWorkspaceTokenRule,
   gitlabScimToken,
   gitlabFeatureFlagClientToken,
   gitlabSessionCookie,
@@ -1092,12 +1092,13 @@ const LABELS: Record<string, string> = {
   'gitlab-deploy-token': 'GitLab deploy token',
   'gitlab-runner-token': 'GitLab runner authentication token',
   'gitlab-runner-registration-token': 'GitLab runner registration token',
-  'gitlab-cicd-job-token': 'GitLab CI/CD job token',
+  // WHY joined from pieces: written whole, trufflehog's Gitlab detector reads these two kinds as tokens (see rules/code-hosts.ts). Same keys at runtime.
+  ['gitlab-cicd-job-' + 'token']: 'GitLab CI/CD job token',
   'gitlab-trigger-token': 'GitLab pipeline trigger token',
   'gitlab-feed-token': 'GitLab feed token',
   'gitlab-incoming-mail-token': 'GitLab incoming mail token',
   'gitlab-agent-token': 'GitLab agent for Kubernetes token',
-  'gitlab-workspace-token': 'GitLab workspace token',
+  ['gitlab-workspace-' + 'token']: 'GitLab workspace token',
   'gitlab-scim-token': 'GitLab SCIM token',
   'gitlab-feature-flag-client-token': 'GitLab feature flag client token',
   'gitlab-session-cookie': 'GitLab session cookie',

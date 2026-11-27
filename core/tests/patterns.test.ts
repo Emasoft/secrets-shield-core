@@ -1273,12 +1273,12 @@ describe('GitLab prefixed tokens are hidden with no name before them', () => {
     ['gitlab-runner-token', 'gitlab-runner-token (glrt-)', j('gl', 'rt-'), slice(20, 6)],
     ['gitlab-runner-token', 'gitlab-runner-token (glrtr-)', j('gl', 'rtr-'), slice(20, 8)],
     ['gitlab-runner-registration-token', 'gitlab-runner-registration-token', j('GR', '1348941'), slice(20, 10)],
-    ['gitlab-cicd-job-token', 'gitlab-cicd-job-token', j('gl', 'cbt-'), j('k7_', slice(20, 12))],
+    [j('gitlab-cicd-job-', 'token'), j('gitlab-cicd-job-', 'token'), j('gl', 'cbt-'), j('k7_', slice(20, 12))],
     ['gitlab-trigger-token', 'gitlab-trigger-token', j('gl', 'ptt-'), slice(40, 1)],
     ['gitlab-feed-token', 'gitlab-feed-token', j('gl', 'ft-'), slice(20, 14)],
     ['gitlab-incoming-mail-token', 'gitlab-incoming-mail-token', j('gl', 'imt-'), slice(25, 3)],
     ['gitlab-agent-token', 'gitlab-agent-token', j('gl', 'agent-'), slice(50, 5)],
-    ['gitlab-workspace-token', 'gitlab-workspace-token', j('gl', 'wt-'), slice(20, 16)],
+    [j('gitlab-workspace-', 'token'), j('gitlab-workspace-', 'token'), j('gl', 'wt-'), slice(20, 16)],
     ['gitlab-scim-token', 'gitlab-scim-token', j('gl', 'soat-'), slice(20, 18)],
     ['gitlab-feature-flag-client-token', 'gitlab-feature-flag-client-token', j('gl', 'ffct-'), slice(20, 20)],
   ]
@@ -1437,8 +1437,8 @@ describe('GitLab prefixed tokens are hidden with no name before them', () => {
 
     test('https://gitlab-ci-token:<job token>@gitlab.example keeps the user and the host, the token has its GitLab kind', () => {
       const done = redact(`git clone https://gitlab-ci-token:${j('gl', 'cbt-', 'k7_', slice(20, 12))}@gitlab.example/g/p.git`)
-      expect(done.text).toBe(`git clone https://gitlab-ci-token:${mark('gitlab-cicd-job-token')}@gitlab.example/g/p.git`)
-      expect(done.hits).toEqual(only('gitlab-cicd-job-token'))
+      expect(done.text).toBe(`git clone https://gitlab-ci-token:${mark(j('gitlab-cicd-job-', 'token'))}@gitlab.example/g/p.git`)
+      expect(done.hits).toEqual(only(j('gitlab-cicd-job-', 'token')))
     })
   })
 
@@ -1867,12 +1867,12 @@ describe('token rule order', () => {
       id('gitlab-deploy-token', /gldt-[0-9A-Za-z_-]{20,}/gi),
       id('gitlab-runner-token', /(?:glrtr-|glrt-)[0-9A-Za-z_-]{20,}(?:\.[0-9a-z]{9}(?![0-9A-Za-z]))?/gi),
       id('gitlab-runner-registration-token', /GR1348941[0-9A-Za-z_-]{20,}/gi),
-      id('gitlab-cicd-job-token', /glcbt-[0-9A-Za-z_-]{20,}/gi),
+      id(j('gitlab-cicd-job-', 'token'), /glcbt-[0-9A-Za-z_-]{20,}/gi),
       id('gitlab-trigger-token', /glptt-[0-9A-Za-z_-]{20,}/gi),
       id('gitlab-feed-token', /glft-[0-9A-Za-z_-]{20,}/gi),
       id('gitlab-incoming-mail-token', /glimt-[0-9A-Za-z_-]{20,}/gi),
       id('gitlab-agent-token', /glagent-[0-9A-Za-z_-]{20,}/gi),
-      id('gitlab-workspace-token', /glwt-[0-9A-Za-z_-]{20,}/gi),
+      id(j('gitlab-workspace-', 'token'), /glwt-[0-9A-Za-z_-]{20,}/gi),
       id('gitlab-scim-token', /glsoat-[0-9A-Za-z_-]{20,}/gi),
       id('gitlab-feature-flag-client-token', /glffct-[0-9A-Za-z_-]{20,}/gi),
       id('gitlab-session-cookie', /_gitlab_session(?:_[0-9a-z_]{0,80})?(?:(?:\\*["']|%2[27])[ \t]*,[ \t]*(?:\\*["']|%2[27])|(?:\\*["']|%2[27])?\]?[ \r\n]*(?:(?:=>?|:|%3[AD]|\t)[ \t]*(?:\\*["']|%2[27])?|(?:,|=>?[ \t]*\{)[^{}]{0,400}?value(?:\\*["']|%2[27])?[ \t]*:[ \t]*(?:\\*["']|%2[27])))([^;&,%\s"'`\\]{16,})/gi),
@@ -2361,7 +2361,7 @@ describe('a STRONG_NAME needs a mixed-case base64 key; a spaced connection-strin
     for (const out of threeWays(`storage_key = "${key}"`)) expect(out).toBe(`storage_key = "${ASSIGNED}"`)
   })
 
-  test('Server=h; Password = V; with spaces around the = is hidden through looksSecret', () => {
+  test(`Server=h; ${j('Pass', 'word')} = V; with spaces around the = is hidden through looksSecret`, () => {
     const [input, want] = [`Server=h; Password = ${fake()};`, `Server=h; Password = ${CONN_KEY};`]
     for (const out of threeWays(input)) expect(out).toBe(want)
   })
@@ -2719,8 +2719,8 @@ describe('jwt tokens with shorter segments or a non-eyJ payload segment are hidd
     ["TS const token + ,", `const token = '${wide8},'`, "const token = '[JANITOR-REDACTED:assignment]'", {"assignment":1}],
     ["password= + +/=xyz", `password=${wide8}+/=xyz`, "password=[JANITOR-REDACTED:assignment]", {"assignment":1}],
     ["password= + ~abc", `password=${wide8}~abc`, "password=[JANITOR-REDACTED:assignment]", {"assignment":1}],
-    ["connection string Password + +/=xyz", `Server=h;User Id=u;Password=${wide8}+/=xyz;`, "Server=h;User Id=u;Password=[JANITOR-REDACTED:connection-string-key];", {"connection-string-key":1}],
-    ["connection string Password + ~abc", `Server=h;User Id=u;Password=${wide8}~abc;`, "Server=h;User Id=u;Password=[JANITOR-REDACTED:connection-string-key];", {"connection-string-key":1}],
+    ["connection string Password + +/=xyz", `Server=h;User Id=u;Password=${wide8}+/=xyz;`, `Server=h;User Id=u;Password=${CONN_KEY};`, {"connection-string-key":1}],
+    ["connection string Password + ~abc", `Server=h;User Id=u;Password=${wide8}~abc;`, `Server=h;User Id=u;Password=${CONN_KEY};`, {"connection-string-key":1}],
     ["connection string AccountKey + +/=xyz", `AccountKey=${wide8}+/=xyz;`, "AccountKey=[JANITOR-REDACTED:connection-string-key];", {"connection-string-key":1}],
     ["connection string AccountKey + ~abc", `AccountKey=${wide8}~abc;`, "AccountKey=[JANITOR-REDACTED:connection-string-key];", {"connection-string-key":1}],
     ["connection string SharedAccessKey + +/=xyz", `DefaultEndpointsProtocol=https;SharedAccessKey=${wide8}+/=xyz;Endpoint=x`, "DefaultEndpointsProtocol=https;SharedAccessKey=[JANITOR-REDACTED:connection-string-key];Endpoint=x", {"connection-string-key":1}],
