@@ -16,7 +16,7 @@ under the MIT licence in LICENSE. The janitor's modifications are recorded in TR
 - `pipeline.ts` is a janitor addition: the one entry point that runs the core passes (secrets, payment cards, email, home paths) in their fixed order over a chosen set of them, and `tests/pipeline.test.ts` tests it.
 - The slash command is renamed to /janitor-secret-shield.
 
-A future upstream sync is a manual merge. The sed file at `reports_dev/secret-shield/upstream-sync.sed.txt` covers only the marker rename.
+A future upstream sync is a manual merge.
 
 ## Extraction
 
