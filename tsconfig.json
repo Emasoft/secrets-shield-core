@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext"],
+    "types": ["bun"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "paths": {
+      "claude-code/testing": ["./test-support/claude-code-testing.ts"]
+    }
+  },
+  "include": ["core/**/*.ts", "scan/**/*.ts", "test-support/**/*.ts"]
+}

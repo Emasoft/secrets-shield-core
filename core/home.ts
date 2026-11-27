@@ -1,0 +1,119 @@
+// Home-directory rewrite for the secret-shield core (TRDD-L1I0FP5T step A). Pure: no env read, no fs, no os.homedir(); the caller passes the home literals it knows.
+// WHY it exists: the report sanitizer hides home paths before a report is committed, and the shield core is to hold the same rules, so one rule set serves both and the two cannot drift. It is its own export and not part of redact(): a home path is not a secret, so redact() and its hits stay untouched.
+// WHY the live mod (register.ts) does NOT call it: the owner decision on applying it to tool results is still open. Tools need absolute paths, and a tilde path read back from a tool result can be written into a file by the model, where it would name a literal ~ directory. Until that is decided only report-side callers may use it.
+// WHY the name class N is spelled with \p classes and the u flag: JS \w is ASCII, the \w of Python is Unicode, and the sanitizer used the Python one, so a name such as josé must count as one name.
+// Rules, one pass each, in this order (the order matters: rule 2 rewrites every real drive path before rules 3 and 4 see the text, so what reaches them after a letter and a colon is an exempt name or a PATH entry):
+//   1. each caller home literal, longest first, becomes ~ (or %USERPROFILE% when it starts with a drive letter). No lookbehind: the literal is the own path of the caller. The tail lookahead refuses a longer name (/Users/app must not eat /Users/appuser).
+//   2. Windows drive path C:<S>Users<S>name, each S independently a backslash run of any length or a slash (each JSON level doubles every backslash, so a fixed list of depths always misses the next one; runs and slashes may be mixed, as in a backslash after the drive letter and a slash after Users): becomes %USERPROFILE%, the separator after the name stays as written. The drive letter counts only when it starts a token: nothing but a start or a non-name, non-slash character before it, or a literal backslash-n, -t or -r, or the long-path prefix (plain or JSON-escaped at any depth), or a slash that is not glued to a name (PATH lists and file: URLs put a letter and a colon before /Users, and that is not a drive; /c:/Users and file://C:/Users are). The word Users may be written in any letter case (Windows paths are case-insensitive). A name may also hold @ and $ (domain and service accounts) but never round brackets. Public, Default, Default User and All Users, in any letter case, are not people. A name may hold single inner spaces only when a separator follows directly: a spaced name such as app user, then a separator, is one name; prose after a plain name, such as the name app then the words is here, leaves the words alone.
+//   3. Git Bash and WSL: /c/Users/name and /mnt/c/Users/name become ~ (same start and exempt names as rule 4).
+//   4. Unix: /Users/name and /home/name become ~, unless the slash follows a name character or ~ (a URL path, or the ~/Users/x a first run left); a slash after } or ) does start a home (${VAR}/Users/x and $(cmd)/home/x give ${VAR}~/x and $(cmd)~/x: the variable may resolve to a root, so a name after it is treated as a person, as the report sanitizer did), except right after a literal backslash-n, -t or -r (JSON-escaped transcript text), where it starts a home. A name may hold @ (realmd homes of hosts joined to Active Directory hold the user name, an at sign and the domain). Shared, Public, Default, Default User and All Users (any letter case) are not people (so a drive path whose folder under Users is named Public, which rule 2 leaves alone, stays whole). A letter and a colon before the slash is a PATH list entry, not a drive (for example a folder named x under opt, a colon, then a Users home): the home is rewritten.
+//   5. Claude project slug: -Users-name becomes -Users-USER; -home-name becomes -home-USER only after a slash. A name that is exactly USER is skipped by both, so nothing is rewritten into itself or counted.
+// WHY rules 3 and 4 have no drive-letter refusal: rule 2 runs first and rewrites every real drive path, so what reaches them after a letter and a colon is an exempt name (a drive path under Users named Public, kept by the exempt list shared with rule 2) or a PATH-list entry such as a folder under opt, a colon, then a Users home (correctly ~). WHY the drive letter of rule 2 must start a token (DRIVE_START): PATH lists and file: URLs put a letter and a colon before /Users (a folder under opt, a colon, then a Users home; or file: and a single slash, then a Users home), and without the boundary rule 2 would read the last letter of the word as a drive and eat it (fil%USERPROFILE%/x). WHY it may also follow a literal backslash-n, -t or -r, the long-path prefix (plain or JSON-escaped at any depth), or a slash that is not glued to a name: real drives appear in JSON-escaped text (a literal backslash-n, then a drive path under Users), in long paths (the long-path prefix, then a drive path under Users) and in URIs (file: with three slashes, file: with two slashes, or a single leading slash, each followed by the drive letter, a colon, Users and a name), and without those alternatives the drive is left visible or rule 4 turns it into C:~/ ; a slash that follows a name (a folder under opt, a colon, then a Users home) still does not count. WHY the long-path prefix is accepted JSON-escaped at any depth: each JSON level doubles every backslash, so a long path inside a JSON string reaches the core as \\\\?\\C:\\Users\\runner and, escaped twice, as \\\\\\\\?\\\\C:\\\\Users\\\\runner, and a fixed list of depths always misses the next one; without the escaped alternative the drive is refused because a backslash stands before it (and rule 4 then turns the Unix-looking tail into C:~/). WHY Windows alone matches Users in any letter case, through ci(): Windows paths are case-insensitive, while the macOS /Users of rule 4 is the real name. WHY the exempt names are built letter by letter (ci) and shared: they are case-insensitive on Windows, and one list serves rules 2, 3 and 4 so they cannot drift.
+// Idempotent in text and in count: ~/x and %USERPROFILE%\x never match any rule, and a slug already holding USER is skipped by both slug rules, so running twice equals running once and the second run counts 0 hits.
+// Linear: every regex pass has one class loop and no nested repeat over the same text, and no group loop at all. The spaced-name tail of rule 2 is a hand loop (rewriteWindows in redactHome): WINDOWS matches the first word only, and the loop extends the match over words split by a single space that neither N nor WIN_N can hold, reading each code point a bounded number of times. SEP (TRDD-L1I0FP5T) is one class loop of backslashes or a slash, with no nested repeat: the run is a single character repeated, never a group that holds a repeat, and the next token after it (Users, a name character) is never a backslash, so it cannot backtrack exponentially. DRIVE_START's long-path lookbehind scans back over a backslash run and is linear only because of its drive-letter lookahead guard: without that guard it is superlinear (about quadratic) in bun 1.3.14 run standalone, while the runner of claude plugin test did not slow down. tests/home.test.ts pins 200,000 characters of adversarial input under one second as run by the gate (bun-format output; the engine is not identified). The home-literal pass is a plain indexOf loop, not a regex: after a refused candidate it resumes from the next index and after a hit from the end of the home, so its cost is at most the number of candidate matches times the home length, never exponential.
+// Not measured: past 200,000 characters in the plugin engine, and the engine itself was not run on the hand loop. rules/key-material.ts records that engine returning no match, silently, once a group loop passes about 1.47M iterations; the spaced-name tail of rule 2 was the one group loop in this file (a search of this file for a group followed by a repeat finds none now), and it is the hand loop rewriteWindows, which reads each code point a bounded number of times and has no iteration ceiling of its own.
+// KNOWN MISSES, each pinned by a test titled "home known miss <slug>: ..." in tests/home.test.ts: a relative ../Users/name (the slash follows a dot); a URL-encoded %2FUsers%2Fname (no slash); a Windows name with spaces and no separator after it (only the first word is rewritten); a Windows name holding round brackets (the name app, then (1) in round brackets, then a separator and a file: only app is rewritten and the tail (1) and the file stay, so that prose such as a path in round brackets keeps its closing bracket); a Linux name ending in a dollar sign (a Samba machine account: the name is hidden and the dollar sign stays after ~); a home with a domain folder and then the user folder under the home root (the sssd-ad man page lists a fallback home of the domain folder, then the user folder, among the modified defaults of the Active Directory provider, for users that AD gives no home directory: the domain folder is rewritten and the user name in the next folder stays); a one-letter root folder before a colon in a PATH list (a PATH list whose first folder is one letter, a colon, then the Users folder: the letter and the colon read as a drive, the output is PATH= then a slash then %USERPROFILE%); a Windows name holding one of & ! # % ~ { } ^, which Windows allows but WIN_N does not (the name is rewritten up to that character and the tail from it stays, so a name such as Aa&Bb leaves &Bb after %USERPROFILE%); a drive letter glued to a name character, a dot or a backslash (it is not a token start, so a path such as dir-C:, the Users folder and a name is left as written).
+
+export type HomeHits = Record<string, number>
+
+const N = String.raw`[\p{L}\p{N}\p{M}_.-]`
+// WHY the Unix and Git Bash rules have their own name class UNIX_N: realmd's default home template is /home/%U@%D, so Linux hosts joined to Active Directory have homes with the user name, an at sign and the domain, and with @ outside the name the domain stayed visible after ~. WHY @ is kept out of N: HOME_START uses N in its lookbehind, and with @ in N a home right after an at sign (a name, an at sign, then the home) would stop being rewritten, a new leak. UNIX_N is N plus @, nothing else. An @host tail glued straight to a home name (scp style: the home, an at sign, a host, a colon) is read as part of the name, so the host is hidden too: intended over-redaction, pinned by a test.
+const UNIX_N = String.raw`[\p{L}\p{N}\p{M}_.@-]`
+// WHY NAME_CHAR: a home literal followed by a name character is only the first part of a longer name (a home named app must not eat a longer name such as appuser), so the literal search in redactHome refuses it.
+const NAME_CHAR = /[\p{L}\p{N}\p{M}_-]/u
+// A drive letter counts only when it starts a token: not glued to a name character, a dot, a slash or a backslash before it; or right after a literal backslash-n, -t or -r (JSON-escaped text); or right after the Windows long-path prefix \\?\ (plain, or JSON-escaped at any depth: each level doubles every backslash, so \\\\?\\ once, \\\\\\\\?\\\\ twice, and so on, hence two or more backslashes, a question mark, then one or more backslashes); or right after a slash that is not itself glued to a name (/c:/Users, file://C:/Users, file:///C:/Users, file:/C:/Users). A PATH list (a folder under opt, a colon, then a Users home) puts a letter and a colon right before /Users, and that letter is the end of a word, or follows a slash that follows a name, so it is not a drive. WHY the long-path alternative starts with a lookahead for a letter and a colon: its lookbehind scans back over a backslash run, and without the cheap guard it ran at every position of a long backslash run, which is superlinear, about quadratic, in bun 1.3.14 run standalone (5,000, 10,000 and 20,000 backslashes took 1.2, 3.7 and 8.9 s, 2026-11-17; the runner of claude plugin test did not slow down, so tests/home.test.ts cannot pin this and the guard needs a timing test that runs the core in standalone bun; report-sanitizer runs it there, and TRDD-L1I0FP5T tracks adding that test); guarded, it runs only where a drive could start.
+const DRIVE_START = String.raw`(?:(?<![\p{L}\p{N}\p{M}_./\\-])|(?<=\\[ntr])|(?=[A-Za-z]:)(?<=\\{2,}\?\\+)|(?<=(?:^|[^\p{L}\p{N}\p{M}_.\\-])/))`
+// Where a Unix or Git Bash home may start: not glued to a name or ~; or right after a literal backslash-n, -t or -r. No drive-letter refusal: rule 2 has already rewritten every real drive path, see the WHY above. WHY } and ) do not refuse (parity with the report sanitizer, TRDD-L1I0FP5T): its old rule hid the name in ${HOME}/Users/name and $(pwd)/home/name, and a probe showed redactHome leaving it visible; the privacy order wins over a possible false hit, and the variable may resolve to a root, so a name after it is treated as a person. WHY ~ still refuses: idempotence, a rewrite can leave ~/Users/x (a home literal that holds another home as a subfolder), and a second run must not match it again.
+const HOME_START = String.raw`(?:(?<!${N}|~)|(?<=\\[ntr]))`
+// Case-insensitive literal built letter by letter, so no (?i:) modifier is needed in the regex.
+const ci = (s: string): string => [...s].map((c) => (/[A-Za-z]/.test(c) ? `[${c.toUpperCase()}${c.toLowerCase()}]` : c)).join('')
+// The names that are not people, in any letter case (Windows paths are case-insensitive, and the same list serves all three rules so they cannot drift). Shared is the macOS shared folder and is added for rules 3 and 4 only.
+const EXEMPT = ['Public', 'Default User', 'Default', 'All Users'].map(ci).join('|')
+const NOT_EXEMPT = String.raw`(?!(?:${ci('Shared')}|${EXEMPT})(?!${UNIX_N}))`
+
+// WHY SEP is one backslash run or a slash: Windows accepts backslashes and slashes in any mix, so each separator slot (after the drive, after Users, after a spaced name) takes either independently. The old back-reference to the first separator forced the same one everywhere and left four drive paths under Users unchanged: a slash after Users with backslashes elsewhere, a slash after the drive with backslashes elsewhere, a doubled backslash after the drive, and a doubled backslash after Users (TRDD-L1I0FP5T probe cases). WHY the backslash run has no length limit: each JSON level doubles every backslash, so a home JSON-escaped twice has four backslashes per separator (C:\\\\Users\\\\name\\\\x) and a fixed list of depths always misses the next one, leaving the name visible.
+const SEP = String.raw`(?:\\+|/)`
+// WHY Windows has its own name class: names of a domain account or a service account hold @ and $ (a name such as runner then @corp, or svc then a dollar sign), and with the shared N the tail stayed visible (%USERPROFILE%@corp\x, TRDD-L1I0FP5T probe case). UNIX_N already holds @, so the only extra Windows character over it is $. Unix keeps $ out because a dollar-sign word right after the home root is a shell variable, not a name. Round brackets stay out on purpose so prose such as a Windows home path in round brackets keeps its closing bracket (pinned by home known miss windows-name-with-brackets).
+const WIN_N = String.raw`[\p{L}\p{N}\p{M}_.@$-]`
+// WHY Users is matched through ci() in this rule only: Windows paths are case-insensitive, so a drive path whose Users folder is spelled UsErS must be rewritten (TRDD-L1I0FP5T probe case); the Unix and Git Bash rules keep the exact /Users and /home, which are the real macOS and Linux names.
+const WINDOWS = new RegExp(String.raw`${DRIVE_START}[A-Za-z]:${SEP}${ci('Users')}${SEP}(?!(?:${EXEMPT})(?!${WIN_N}))${WIN_N}+`, 'gu')
+// WHY WINDOWS stops after the first word of the name: the spaced tail is the hand loop rewriteWindows in redactHome, see the WHY there (CPV REGEX_DOS flags a repeated group that holds a repeat, and the plugin engine has a silent group-loop iteration ceiling).
+// One code point test for the name class, anchored, with the u flag so an astral letter counts as one code point.
+const WIN_N_CHAR = new RegExp(String.raw`^${WIN_N}$`, 'u')
+const isWinName = (c: number | undefined): c is number => c !== undefined && WIN_N_CHAR.test(String.fromCodePoint(c))
+const GIT_BASH = new RegExp(String.raw`${HOME_START}(?:/mnt)?/[A-Za-z]/Users/${NOT_EXEMPT}${UNIX_N}+`, 'gu')
+const UNIX = new RegExp(String.raw`${HOME_START}/(?:Users|home)/${NOT_EXEMPT}${UNIX_N}+`, 'gu')
+// WHY both slug rules skip a name that is exactly USER (the second negative lookahead): they rewrote -Users-USER and -home-USER to themselves and COUNTED it, so a --scan of already sanitized text reported changes that were not changes (TRDD-L1I0FP5T probe case -Users-USER-proj). A name that only starts with USER (USER.x, USERx) is still a name and is rewritten. No other rule rewrites text into itself: ~ and %USERPROFILE% match no rule, and a real /Users/USER/x becomes ~/x, which changes the text and counts.
+const SLUG_USERS = /(?<![A-Za-z0-9])-Users-(?!Shared(?![A-Za-z0-9]))(?!USER(?=-|\/|\s|$))[A-Za-z0-9_.]+?(?=-|\/|\s|$)/gu
+const SLUG_HOME = /(?<=\/)-home-(?!USER(?=-|\/|\s|$))[A-Za-z0-9_.]+?(?=-|\/|\s|$)/gu
+
+// WHY splitsPair: a regex with the u flag never starts or ends a match inside a surrogate pair, and the literal search of redactHome keeps that (a home that begins with a lone low surrogate or ends with a lone high one must not cut an astral character in two).
+const splitsPair = (s: string, i: number): boolean => i > 0 && i < s.length && (s.charCodeAt(i - 1) & 0xfc00) === 0xd800 && (s.charCodeAt(i) & 0xfc00) === 0xdc00
+
+// Ignored: an empty entry, or one with fewer than two segments (a bare slash, /root), which would rewrite far too much. Trailing separators are cut; longest first so a home inside another home never wins.
+const usableHomes = (homes: readonly string[]): string[] =>
+  [...new Set(homes.map((h) => h.replace(/[\\/]+$/, '')))]
+    .filter((h) => h.split(/[\\/]+/).filter(Boolean).length >= 2)
+    .sort((a, b) => b.length - a.length)
+
+export function redactHome(text: string, homes: readonly string[]): { text: string; hits: HomeHits } {
+  let count = 0
+  // Every match is replaced and counted.
+  const rewrite = (input: string, re: RegExp, to: string): string =>
+    input.replace(re, () => {
+      // WHY every match counts: hits is the number of rewrites the spec names. A slug already holding USER is never matched (SLUG_USERS and SLUG_HOME skip it), so a second run over sanitized text counts 0 and a --scan of it reports no change (TRDD-L1I0FP5T probe: the slug rules rewrote and counted -Users-USER and -home-USER again).
+      count++
+      return to
+    })
+  // WHY a plain string search and not new RegExp(escaped home): a home is a literal, so it needs no dynamic RegExp (and no escaping to get right). This is not a scanner workaround. Same semantics as the global regex it replaces (the escaped home, then a lookahead refusing a name character): left to right, non-overlapping; a candidate whose next code point is a name character (NAME_CHAR, a surrogate pair counts as one code point) is refused and the search goes on from the next index; after a hit it goes on from the end of the home. Each hit counts, as in rewrite().
+  const rewriteLiteral = (input: string, home: string, to: string): string => {
+    let out = ''
+    let copied = 0
+    let at = input.indexOf(home)
+    while (at !== -1) {
+      const end = at + home.length
+      const next = input.codePointAt(end)
+      if (!splitsPair(input, at) && !splitsPair(input, end) && (next === undefined || !NAME_CHAR.test(String.fromCodePoint(next)))) {
+        out += input.slice(copied, at) + to
+        copied = end
+        count++
+        at = input.indexOf(home, end)
+      } else {
+        at = input.indexOf(home, at + 1)
+      }
+    }
+    return out + input.slice(copied)
+  }
+  // WHY the spaced-name tail of rule 2 is a hand loop and not a regex group: (1) CPV 5.16.2 flags a group that holds a repeat and is itself repeated (REGEX_DOS), and the old tail (a word, then a group of a space and a word, repeated) was such a group, a false positive (the rule measured linear in standalone bun on hostile input up to 80,000 characters) that still blocks the strict publish gate; (2) the plugin engine silently returns no match once a group loop passes about 1.47M iterations (rules/key-material.ts), and that tail was the only group loop in this file, so a long spaced name would have fallen back to its first word. WINDOWS therefore matches only the first word; this loop runs it on the ORIGINAL input with lastIndex (a replace callback cannot extend a match past the regex) and extends each match over single-space-separated words, then keeps the extension only when a separator follows, which equals the old alternation: it succeeded only when every space-separated word was consumed and a separator followed, else it fell back to the first word. Each code point is read a bounded number of times, with no engine iteration ceiling.
+  const rewriteWindows = (input: string): string => {
+    WINDOWS.lastIndex = 0
+    let result = ''
+    let copied = 0
+    let m = WINDOWS.exec(input)
+    while (m !== null) {
+      const start = m.index
+      const matchEnd = start + m[0].length
+      let j = matchEnd
+      // One space, then a word code point: step over the space and every following word code point (a surrogate pair is one code point).
+      while (input[j] === ' ' && isWinName(input.codePointAt(j + 1))) {
+        j++
+        for (let c = input.codePointAt(j); isWinName(c); c = input.codePointAt(j)) j += c > 0xffff ? 2 : 1
+      }
+      const end = j > matchEnd && (input[j] === '\\' || input[j] === '/') ? j : matchEnd
+      result += input.slice(copied, start) + '%USERPROFILE%'
+      copied = end
+      count++
+      WINDOWS.lastIndex = end
+      m = WINDOWS.exec(input)
+    }
+    return result + input.slice(copied)
+  }
+  let out = text
+  for (const home of usableHomes(homes)) out = rewriteLiteral(out, home, /^[A-Za-z]:/.test(home) ? '%USERPROFILE%' : '~')
+  out = rewriteWindows(out)
+  out = rewrite(out, GIT_BASH, '~')
+  out = rewrite(out, UNIX, '~')
+  out = rewrite(out, SLUG_USERS, '-Users-USER')
+  out = rewrite(out, SLUG_HOME, '-home-USER')
+  return { text: out, hits: count > 0 ? { 'home-path': count } : {} }
+}
