@@ -2917,10 +2917,11 @@ describe('an escape pair counts as one character of a quoted value', () => {
   test('a service-account private key with escaped newlines is still hidden', () => {
     const dashes = '-'.repeat(5)
     const kind = ['PRIV', 'ATE KEY'].join('')
-    const body = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASC' + 'BKcwggSjAgEAAoIBAQC7q8vR2mK3vT9x' + 'Lw2RbN5yHcZq8vR2mK3vT9xLw2RbN5yH'
+    // WHY a repeated filler and not a base64-looking body: consumers run cspell over the vendored copy, and realistic base64 fragments read as unknown words.
+    const body = 'AB12cd34'.repeat(8)
     const pem = `${dashes}BEGIN ${kind}${dashes}${bs}n${body}${bs}n${dashes}END ${kind}${dashes}${bs}n`
     const done = redact(`{"private_key": "${pem}"}`)
     expect(done.text.includes(body)).toBe(false)
-    expect(Object.keys(done.hits).length).toBeGreaterThan(0)
+    expect(done.hits).toEqual({ 'private-key': 1 })
   })
 })
