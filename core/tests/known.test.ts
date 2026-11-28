@@ -136,7 +136,13 @@ test('the time is linear in the text: 2000 values over 1 MB, and a 512 KB run of
   const rows: KnownSecret[] = []
   for (let n = 0; n < 2000; n++) rows.push({ uuid: U1, kind: 'k', value: j('v', hex(n * 7919), hex(n * 104729), hex(n)) })
   const filler = 'lorem ipsum dolor sit amet, '.repeat(37450)
-  const text = j(filler.slice(0, 500000), rows[17]!.value, filler.slice(0, 500000), rows[1999]!.value)
+  // WHY a guard and not rows[n]! (secrets-shield-core#1): UBS flags a non-null assertion in a property chain; the loop above makes 2000 rows, so a missing one is a bug in this test.
+  const valueOf = (n: number): string => {
+    const row = rows[n]
+    if (row === undefined) throw new Error(`row ${n} was not made`)
+    return row.value
+  }
+  const text = j(filler.slice(0, 500000), valueOf(17), filler.slice(0, 500000), valueOf(1999))
   const wide = minMs(() => redactKnown(text, known(...rows)).text.length, 3).ms
   expect(redactKnown(text, known(...rows)).hits).toEqual({ k: 2 })
 

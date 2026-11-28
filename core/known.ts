@@ -59,11 +59,23 @@ export function buildKnownIndex(secrets: readonly KnownSecret[]): { index: Known
   const children: Map<number, number>[] = [new Map()]
   const term: number[] = [-1]
   const length = kept.map((secret) => secret.value.length)
+  // WHY guards and not `children[n]!` (secrets-shield-core#1): every node number is children.length at the moment the node was made, and every pattern number is an index of kept,
+  // so a missing entry is a bug in this function. The guard throws and names it instead of asserting it away, which UBS flags (ts.non-null-assertion-chain).
+  const childrenOf = (node: number): Map<number, number> => {
+    const map = children[node]
+    if (map === undefined) throw new KnownIndexError(`trie node ${node} does not exist`)
+    return map
+  }
+  const secretOf = (p: number): KnownSecret => {
+    const secret = kept[p]
+    if (secret === undefined) throw new KnownIndexError(`pattern ${p} does not exist`)
+    return secret
+  }
   kept.forEach((secret, p) => {
     let node = 0
     for (let i = 0; i < secret.value.length; i++) {
       const code = secret.value.charCodeAt(i)
-      const step = children[node]!.get(code)
+      const step = childrenOf(node).get(code)
       if (step !== undefined) {
         node = step
         continue
@@ -71,7 +83,7 @@ export function buildKnownIndex(secrets: readonly KnownSecret[]): { index: Known
       const made = children.length
       children.push(new Map())
       term.push(-1)
-      children[node]!.set(code, made)
+      childrenOf(node).set(code, made)
       node = made
     }
     term[node] = p
@@ -81,16 +93,16 @@ export function buildKnownIndex(secrets: readonly KnownSecret[]): { index: Known
   const fail: number[] = new Array<number>(children.length).fill(0)
   const dict: number[] = new Array<number>(children.length).fill(-1)
   const queue: number[] = []
-  for (const child of children[0]!.values()) queue.push(child)
+  for (const child of childrenOf(0).values()) queue.push(child)
   for (let head = 0; head < queue.length; head++) {
     const node = queue[head]!
-    for (const [code, child] of children[node]!) {
+    for (const [code, child] of childrenOf(node)) {
       let back = fail[node]!
-      let step = children[back]!.get(code)
+      let step = childrenOf(back).get(code)
       // WHY node !== 0 is not tested here: queue holds no root, and a child of the root keeps fail 0 (set by the fill), so this loop only runs below depth 1.
       while (step === undefined && back !== 0) {
         back = fail[back]!
-        step = children[back]!.get(code)
+        step = childrenOf(back).get(code)
       }
       fail[child] = step ?? 0
       const via = fail[child]!
@@ -108,10 +120,10 @@ export function buildKnownIndex(secrets: readonly KnownSecret[]): { index: Known
     let node = 0
     for (let i = from; i < to; i++) {
       const code = text.charCodeAt(i)
-      let step = children[node]!.get(code)
+      let step = childrenOf(node).get(code)
       while (step === undefined && node !== 0) {
         node = fail[node]!
-        step = children[node]!.get(code)
+        step = childrenOf(node).get(code)
       }
       node = step ?? 0
       const hit = term[node]! >= 0 ? node : dict[node]!
@@ -134,7 +146,7 @@ export function buildKnownIndex(secrets: readonly KnownSecret[]): { index: Known
   }
 
   return {
-    index: { size: kept.length, spans, marker: (p) => markers[p]!, kind: (p) => kept[p]!.kind },
+    index: { size: kept.length, spans, marker: (p) => markers[p]!, kind: (p) => secretOf(p).kind },
     skipped,
   }
 }
