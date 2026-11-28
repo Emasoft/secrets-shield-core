@@ -2894,3 +2894,33 @@ describe('the escaped JSON pair pass runs in linear time with the same matches (
     expect(text).toBe(`${run}"api_key\\":\\"${M}\\"`)
   })
 })
+
+// WHY these tests (secrets-shield-core#3): a quoted value was measured as written, so the escape pair of `"k\n"` counted as two characters and a one-character value passed the
+// 3-character floor of looksSecret. Both sides are asserted: the one-character value is left alone, and a real value with an escape is still hidden. The backslash and the PEM markers are built at run time.
+describe('an escape pair counts as one character of a quoted value', () => {
+  const bs = String.fromCharCode(92)
+  test('a one-character value with an escaped newline is not a secret, in a JSON pair or an assignment line', () => {
+    for (const line of [`x = {"secret.pem": "k${bs}n"}`, `repo = make_repo(tmp_path, {"secret.pem": "k${bs}n", "main.py": "1${bs}n"})`, `token = "k${bs}n"`]) {
+      const done = redact(line)
+      expect(done.hits).toEqual({})
+      expect(done.text).toBe(line)
+    }
+  })
+  test('a longer value with an escaped newline is still hidden', () => {
+    const value = 's3cr3' + 'tV4lue' + `${bs}n`
+    expect(redact(`x = {"client_secret": "${value}"}`).text).toBe('x = {"client_secret": "[JANITOR-REDACTED:assignment]"}')
+    expect(redact(`token = "${value}"`).text).toBe('token = "[JANITOR-REDACTED:assignment]"')
+  })
+  test('three characters, one of them an escape pair, still reach the floor', () => {
+    expect(redact(`x = {"secret.pem": "ab${bs}n"}`).hits).toEqual({ assignment: 1 })
+  })
+  test('a service-account private key with escaped newlines is still hidden', () => {
+    const dashes = '-'.repeat(5)
+    const kind = ['PRIV', 'ATE KEY'].join('')
+    const body = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASC' + 'BKcwggSjAgEAAoIBAQC7q8vR2mK3vT9x' + 'Lw2RbN5yHcZq8vR2mK3vT9xLw2RbN5yH'
+    const pem = `${dashes}BEGIN ${kind}${dashes}${bs}n${body}${bs}n${dashes}END ${kind}${dashes}${bs}n`
+    const done = redact(`{"private_key": "${pem}"}`)
+    expect(done.text.includes(body)).toBe(false)
+    expect(Object.keys(done.hits).length).toBeGreaterThan(0)
+  })
+})

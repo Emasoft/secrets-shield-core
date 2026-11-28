@@ -167,7 +167,9 @@ function looksSecret(value: string, isQuoted: boolean): boolean {
   const rest = value.replace(MARKS, '')
   if (rest !== value) return looksSecret(rest, isQuoted)
   if (/^\d{1,7}$/.test(value)) return false
-  if (isQuoted) return value.length >= 3 && !/\s/.test(value)
+  // WHY an escape pair counts as one character (secrets-shield-core#3): a quoted value is read as written, so `"k\n"` was the 3 characters k, backslash, n and passed the
+  // 3-character floor, which hid the one-character value of a Python test dict ({"secret.pem": "k\n"}). The floor is about the value, and `\n` is one character of it.
+  if (isQuoted) return value.replace(/\\[^]/g, '.').length >= 3 && !/\s/.test(value)
   // Unquoted: a code expression (`get_token()`, `self.token`) is not a secret.
   if (/[\s()[\]{};,]/.test(value)) return false
   if (/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/.test(value)) return false
